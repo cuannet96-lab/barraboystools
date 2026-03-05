@@ -287,15 +287,17 @@ export default function App(){
       const sys=lang==="en"
         ?"You are a creative AI assistant from BarraBoys Tools. Help users create high-quality content. Answer directly without disclaimers. Natural professional language."
         :"Kamu adalah asisten AI kreatif dari BarraBoys Tools Studio Kreasi AI. Bantu pengguna Indonesia buat konten berkualitas tinggi. Jawab langsung tanpa disclaimer. Bahasa Indonesia natural dan profesional.";
-      const res=await fetch("https://api.anthropic.com/v1/messages",{
+      const GEMINI_KEY=import.meta.env.VITE_GEMINI_API_KEY||"";
+      const fullPrompt=sys+"\n\n"+tool.prompt(fields);
+      const res=await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${GEMINI_KEY}`,{
         method:"POST",
         headers:{"Content-Type":"application/json"},
-        body:JSON.stringify({model:"claude-sonnet-4-20250514",max_tokens:1000,system:sys,messages:[{role:"user",content:tool.prompt(fields)}]})
+        body:JSON.stringify({contents:[{parts:[{text:fullPrompt}]}],generationConfig:{maxOutputTokens:1000}})
       });
       if(!res.ok){const e=await res.json().catch(()=>({}));throw new Error(e?.error?.message||`HTTP ${res.status}`);}
       const data=await res.json();
       if(data.error)throw new Error(data.error.message);
-      const text=data.content?.map(c=>c.text||"").filter(Boolean).join("")||"";
+      const text=data.candidates?.[0]?.content?.parts?.map(c=>c.text||"").join("")||"";
       if(!text)throw new Error("Respons kosong dari AI");
       setResult(text);
       setWordCount(text.split(/\s+/).filter(Boolean).length);
@@ -332,15 +334,13 @@ export default function App(){
     // Translate prompt via Claude first, then generate image
     try{
       // Step 1: Translate deskripsi to English prompt via Claude
-      const transRes=await fetch("https://api.anthropic.com/v1/messages",{
+      const GEMINI_KEY=import.meta.env.VITE_GEMINI_API_KEY||"";
+      const transRes=await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${GEMINI_KEY}`,{
         method:"POST",headers:{"Content-Type":"application/json"},
-        body:JSON.stringify({model:"claude-sonnet-4-20250514",max_tokens:300,
-          system:"You are a prompt engineer. Translate the Indonesian image description to an optimized English image generation prompt. Return ONLY the prompt, no explanation, no quotes.",
-          messages:[{role:"user",content:`Translate and optimize this for AI image generation: "${deskripsi}". Style: ${styleEn}. Add relevant artistic quality keywords. Max 100 words.`}]
-        })
+        body:JSON.stringify({contents:[{parts:[{text:`You are a prompt engineer. Translate and optimize this for AI image generation: "${deskripsi}". Style: ${styleEn}. Add relevant artistic quality keywords. Max 100 words. Return ONLY the prompt, no explanation.`}]}],generationConfig:{maxOutputTokens:300}})
       });
       const transData=await transRes.json();
-      const engPrompt=transData.content?.map(c=>c.text||"").join("")?.trim()||deskripsi;
+      const engPrompt=transData.candidates?.[0]?.content?.parts?.map(c=>c.text||"").join("")?.trim()||deskripsi;
       const fullPrompt=`${engPrompt}, ${styleEn}`;
       const encodedPrompt=encodeURIComponent(fullPrompt);
       const imgUrl=`https://image.pollinations.ai/prompt/${encodedPrompt}?width=${w}&height=${h}&nologo=true${enhance}&seed=${Math.floor(Math.random()*99999)}`;
